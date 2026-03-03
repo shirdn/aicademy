@@ -38,6 +38,8 @@ python3 -m http.server 8766
 
 The script checks for Python, starts the server, and opens your browser automatically.
 
+> **Note:** This project was developed and tested on Windows. It has not been tested on a clean machine or on Mac/Linux — minor adjustments to paths or Python commands may be needed. But hey, that's what vibe coding is for — ask your AI to fix it and move on.
+
 ---
 
 ## How to Play
