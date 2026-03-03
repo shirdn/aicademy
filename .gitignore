@@ -112,3 +112,4 @@ pnpm-debug.log*
 .netlify/
 tmp/
 temp/
+memory-game/

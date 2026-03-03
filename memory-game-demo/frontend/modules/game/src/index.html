@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Arcane Vault — Memory Match</title>
+  <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&family=Crimson+Text:wght@400;600&family=Fira+Code:wght@400&display=swap" rel="stylesheet">
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #030010;
+      color: #e2ddf5;
+      font-family: 'Crimson Text', Georgia, serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    #root { min-height: 100vh; }
+
+    /* Card flip animation */
+    .card-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transition: transform 0.5s ease-in-out;
+      transform-style: preserve-3d;
+    }
+    .card-inner.flipped { transform: rotateY(180deg); }
+
+    .card-face {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      border-radius: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    .card-front { transform: rotateY(180deg); }
+
+    /* Match glow pulse */
+    @keyframes matchGlow {
+      0% { box-shadow: 0 0 8px rgba(52, 211, 153, 0.4); }
+      50% { box-shadow: 0 0 24px rgba(52, 211, 153, 0.8), 0 0 48px rgba(52, 211, 153, 0.3); }
+      100% { box-shadow: 0 0 12px rgba(124, 92, 191, 0.4); }
+    }
+    .match-glow { animation: matchGlow 0.8s ease-out forwards; }
+
+    /* Mismatch shake */
+    @keyframes mismatchShake {
+      0%, 100% { transform: translateX(0) rotateY(180deg); }
+      20% { transform: translateX(-6px) rotateY(180deg); }
+      40% { transform: translateX(6px) rotateY(180deg); }
+      60% { transform: translateX(-4px) rotateY(180deg); }
+      80% { transform: translateX(4px) rotateY(180deg); }
+    }
+    .mismatch-shake .card-inner { animation: mismatchShake 0.4s ease-in-out; }
+
+    /* Star pop */
+    @keyframes starPop {
+      0% { transform: scale(0); opacity: 0; }
+      60% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Fade in */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+
+    /* Card fan float */
+    @keyframes floatCard {
+      0%, 100% { transform: var(--rotate) translateY(0); }
+      50% { transform: var(--rotate) translateY(-6px); }
+    }
+
+    /* Timer bar smooth */
+    .timer-bar-fill {
+      transition: width 0.1s linear, background-color 0.3s ease;
+    }
+
+    /* Glow pulse for title */
+    @keyframes titleGlow {
+      0%, 100% { text-shadow: 0 0 20px rgba(167, 139, 250, 0.3); }
+      50% { text-shadow: 0 0 40px rgba(167, 139, 250, 0.6), 0 0 80px rgba(167, 139, 250, 0.2); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useCallback, useEffect, useRef, useMemo } = React;
+
+    // ═══════════════════════════════════════════════════════
+    // DESIGN TOKENS (Arcane UI Kit v1.0)
+    // ═══════════════════════════════════════════════════════
+    const T = {
+      // Surfaces (dark → light)
+      void:       '#030010',
+      abyss:      '#08001a',
+      obsidian:   '#0f0528',
+      nightstone: '#160a35',
+      dusk:       '#1e1145',
+      twilight:   '#2a1a55',
+      // Accents
+      arcane:      '#a78bfa',
+      arcaneLight: '#c4b5fd',
+      arcaneDim:   '#7c5cbf',
+      gold:        '#fbbf24',
+      goldLight:   '#fde68a',
+      // Semantic
+      success: '#34d399',
+      warning: '#f59e0b',
+      danger:  '#f87171',
+      info:    '#60a5fa',
+      // Text (violet-tinted, NEVER gray)
+      text:      '#e2ddf5',
+      textMuted: '#9b8ec2',
+      textFaint: '#5b4d80',
+      textGhost: '#3d2e60',
+      // Typography
+      fontDisplay: "'MedievalSharp', serif",
+      fontBody:    "'Crimson Text', Georgia, serif",
+      fontMono:    "'Fira Code', 'Courier New', monospace",
+      // Radii
+      r1: 4, r2: 8, r3: 12, r4: 16, rFull: 999,
+      // Shadows
+      shadowSm: '0 2px 4px rgba(0,0,0,0.3)',
+      shadowMd: '0 4px 8px rgba(0,0,0,0.4)',
+      shadowLg: '0 8px 24px rgba(0,0,0,0.5)',
+      glow: (color) => `0 0 24px ${color}, 0 4px 16px rgba(0,0,0,0.5)`,
+    };
+
+    // ═══════════════════════════════════════════════════════
+    // CREATURE SYMBOL POOL (16 D&D creatures)
+    // ═══════════════════════════════════════════════════════
+    const SYMBOLS = [
+      { id: 'dragon',  emoji: '🐉', name: 'Dragon' },
+      { id: 'sword',   emoji: '⚔️',  name: 'Sword' },
+      { id: 'shield',  emoji: '🛡️',  name: 'Shield' },
+      { id: 'potion',  emoji: '🧪', name: 'Potion' },
+      { id: 'scroll',  emoji: '📜', name: 'Scroll' },
+      { id: 'skull',   emoji: '💀', name: 'Skull' },
+      { id: 'crown',   emoji: '👑', name: 'Crown' },
+      { id: 'gem',     emoji: '💎', name: 'Gem' },
+      { id: 'flame',   emoji: '🔥', name: 'Flame' },
+      { id: 'moon',    emoji: '🌙', name: 'Moon' },
+      { id: 'eye',     emoji: '👁️',  name: 'Eye' },
+      { id: 'bolt',    emoji: '⚡', name: 'Lightning' },
+      { id: 'star',    emoji: '⭐', name: 'Star' },
+      { id: 'key',     emoji: '🗝️',  name: 'Key' },
+      { id: 'snake',   emoji: '🐍', name: 'Serpent' },
+      { id: 'castle',  emoji: '🏰', name: 'Castle' },
+    ];
+
+    // ═══════════════════════════════════════════════════════
+    // SHAPED GRID TEMPLATE SYSTEM (Sprint 2)
+    // ═══════════════════════════════════════════════════════
+    function makeTemplate(id, name, shape, diff, time, pat) {
+      const rows = pat.split('/');
+      const grid = { cols: rows[0].length, rows: rows.length };
+      const slots = [];
+      rows.forEach((row, r) => {
+        [...row].forEach((ch, c) => {
+          if (ch === '#') slots.push({ col: c, row: r, size: '1x1' });
+        });
+      });
+      const pairs = slots.length / 2;
+      const dc = { easy: T.success, medium: T.warning, hard: T.danger, legendary: T.arcane };
+      return { id, name, shape, difficulty: diff, grid, slots, timeLimit: time, pairs,
+        par: { moves: pairs, twoStar: pairs * 2, threeStar: Math.ceil(pairs * 1.5) },
+        color: dc[diff], pattern: rows };
+    }
+
+    function validateTemplate(t) {
+      if (t.slots.length % 2 !== 0) return 'Odd total slots';
+      const sizes = {};
+      t.slots.forEach(s => { sizes[s.size] = (sizes[s.size] || 0) + 1; });
+      for (const [sz, ct] of Object.entries(sizes)) { if (ct % 2 !== 0) return `Odd count for ${sz}`; }
+      const cells = new Set();
+      for (const s of t.slots) {
+        const key = `${s.col},${s.row}`;
+        if (cells.has(key)) return `Overlap at ${key}`;
+        cells.add(key);
+        if (s.col < 0 || s.row < 0 || s.col >= t.grid.cols || s.row >= t.grid.rows) return 'Out of bounds';
+      }
+      const pairs = t.slots.length / 2;
+      if (pairs < 3 || pairs > 24) return `Pair count ${pairs} out of range`;
+      return null;
+    }
+
+    // 8 Shaped Levels — pattern: # = card slot, . = empty, / = row separator
+    const LEVELS = [
+      makeTemplate('level-01', 'The Pillar', '1', 'easy', 60,
+        '.#./##./.#./.#./.#./.#./###'),
+      makeTemplate('level-02', 'The Cross', '+', 'easy', 90,
+        '.##./.##./####/####/.##./.##.'),
+      makeTemplate('level-03', 'The Tablet', 'T', 'easy', 80,
+        '#####/#####/.###./..#../..#../..#..'),
+      makeTemplate('level-04', 'The Arch', 'A', 'medium', 120,
+        '..###../.#...#./#.....#/#.....#/#######/#.....#/#.....#'),
+      makeTemplate('level-05', 'The Serpent', 'S', 'medium', 100,
+        '.####./##..../##..../.####./....##/....##/.####.'),
+      makeTemplate('level-06', 'The Diamond', '\u25C6', 'medium', 100,
+        '..##../.####./######/######/.####./..##..'),
+      makeTemplate('level-07', 'The Gate', 'H', 'hard', 110,
+        '#....#/#....#/######/######/#....#/#....#'),
+      makeTemplate('level-08', 'The Star', '\u2605', 'legendary', 90,
+        '...##.../..####../.######./########/.######./..####.../...##...'),
+    ];
+
+    // ═══════════════════════════════════════════════════════
+    // UTILITIES
+    // ═══════════════════════════════════════════════════════
+    function fisherYatesShuffle(arr) {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function buildCards(slots) {
+      const groups = {};
+      slots.forEach((slot, i) => {
+        if (!groups[slot.size]) groups[slot.size] = [];
+        groups[slot.size].push({ ...slot, slotIndex: i });
+      });
+      const cards = [];
+      let pool = fisherYatesShuffle([...SYMBOLS]);
+      let si = 0;
+      Object.values(groups).forEach(groupSlots => {
+        const pairsNeeded = groupSlots.length / 2;
+        const syms = pool.slice(si, si + pairsNeeded);
+        si += pairsNeeded;
+        const instances = [];
+        syms.forEach(sym => {
+          instances.push({ pairId: sym.id, symbol: sym });
+          instances.push({ pairId: sym.id, symbol: sym });
+        });
+        const shuffled = fisherYatesShuffle(instances);
+        groupSlots.forEach((slot, idx) => {
+          cards.push({ id: slot.slotIndex, col: slot.col, row: slot.row,
+            size: slot.size, ...shuffled[idx] });
+        });
+      });
+      return cards;
+    }
+
+    function calculateStars(moves, pairs, elapsed, timeLimit) {
+      const ratio = moves / pairs;
+      const timeRatio = (timeLimit - elapsed) / timeLimit;
+      if (ratio <= 1.5 && timeRatio >= 0.5) return 3;
+      if (ratio <= 2.0) return 2;
+      return 1;
+    }
+
+    function calculateXP(pairs, elapsed, timeLimit, stars) {
+      const baseXP = pairs * 100;
+      const timeBonus = Math.max(0, Math.round((timeLimit - elapsed) * 3));
+      const starBonus = stars * 50;
+      return { baseXP, timeBonus, starBonus, total: baseXP + timeBonus + starBonus };
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // COMPONENTS
+    // ═══════════════════════════════════════════════════════
+
+    // ── ArcaneButton ──
+    function ArcaneButton({ children, variant = 'primary', size = 'md', glow = false, onClick, style = {} }) {
+      const [hovered, setHovered] = useState(false);
+      const sizes = { sm: { px: 16, py: 8, fs: 13 }, md: { px: 24, py: 12, fs: 16 }, lg: { px: 32, py: 16, fs: 20 } };
+      const s = sizes[size];
+
+      const variants = {
+        primary:  { bg: T.arcane, hoverBg: T.arcaneLight, color: T.void },
+        gold:     { bg: T.gold,   hoverBg: T.goldLight,   color: T.void },
+        ghost:    { bg: 'transparent', hoverBg: T.dusk, color: T.arcane, border: `1px solid ${T.arcane}` },
+        danger:   { bg: T.danger, hoverBg: '#fca5a5',     color: T.void },
+      };
+      const v = variants[variant];
+
+      return (
+        <button
+          onClick={onClick}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            background: hovered ? v.hoverBg : v.bg,
+            color: v.color,
+            border: v.border || 'none',
+            borderRadius: T.r2,
+            padding: `${s.py}px ${s.px}px`,
+            fontSize: s.fs,
+            fontFamily: T.fontDisplay,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            boxShadow: glow ? T.glow(T.arcane) : T.shadowMd,
+            letterSpacing: '0.5px',
+            ...style,
+          }}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    // ── TimerBar ──
+    function TimerBar({ elapsed, timeLimit }) {
+      const remaining = Math.max(0, timeLimit - elapsed);
+      const pct = (remaining / timeLimit) * 100;
+      const ratio = remaining / timeLimit;
+      const barColor = ratio > 0.5 ? T.arcane : ratio > 0.2 ? T.warning : T.danger;
+
+      return (
+        <div style={{
+          width: '100%',
+          height: 6,
+          background: T.obsidian,
+          borderRadius: T.rFull,
+          overflow: 'hidden',
+          marginBottom: 8,
+        }}>
+          <div className="timer-bar-fill" style={{
+            width: `${pct}%`,
+            height: '100%',
+            background: barColor,
+            borderRadius: T.rFull,
+          }} />
+        </div>
+      );
+    }
+
+    // ── HUD ──
+    function HUD({ elapsed, timeLimit, pairs, totalPairs, moves, onBack, levelName }) {
+      const remaining = Math.max(0, timeLimit - elapsed);
+      return (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 16px', background: T.obsidian,
+          borderBottom: `1px solid ${T.twilight}`,
+          fontFamily: T.fontDisplay, fontSize: 14,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button onClick={onBack} style={{
+              background: 'transparent', border: `1px solid ${T.twilight}`,
+              color: T.textMuted, borderRadius: T.r2, padding: '5px 12px',
+              cursor: 'pointer', fontFamily: T.fontDisplay, fontSize: 12,
+            }}>← Back</button>
+            {levelName && <span style={{ color: T.textFaint, fontSize: 12 }}>{levelName}</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 20 }}>
+            <span style={{ color: remaining <= 10 ? T.danger : T.textMuted }}>
+              ⏳ {remaining}s
+            </span>
+            <span style={{ color: T.textMuted }}>🎯 {pairs}/{totalPairs}</span>
+            <span style={{ color: T.textMuted }}>⚡ {moves}</span>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Card ──
+    function Card({ card, cellSize = 80, isFlipped, isMatched, isMismatched, onClick }) {
+      const radius = Math.round(cellSize * 0.12);
+
+      return (
+        <div
+          onClick={onClick}
+          className={isMismatched ? 'mismatch-shake' : ''}
+          style={{
+            width: cellSize,
+            height: cellSize,
+            perspective: 600,
+            cursor: isMatched ? 'default' : 'pointer',
+            borderRadius: radius,
+          }}
+        >
+          <div
+            className={`card-inner ${isFlipped || isMatched ? 'flipped' : ''} ${isMatched ? 'match-glow' : ''}`}
+          >
+            {/* Back face */}
+            <div className="card-face card-back" style={{
+              background: `linear-gradient(135deg, ${T.nightstone}, ${T.dusk})`,
+              border: `1px solid ${T.twilight}`,
+              boxShadow: T.shadowMd,
+              borderRadius: radius,
+            }}>
+              <span style={{
+                fontSize: 28,
+                color: T.arcaneDim,
+                opacity: 0.6,
+                fontFamily: T.fontDisplay,
+              }}>✦</span>
+            </div>
+
+            {/* Front face */}
+            <div className="card-face card-front" style={{
+              background: isMatched
+                ? `linear-gradient(135deg, ${T.obsidian}, ${T.nightstone})`
+                : `linear-gradient(135deg, ${T.nightstone}, ${T.obsidian})`,
+              border: `1px solid ${isMatched ? T.arcaneDim : T.twilight}`,
+              boxShadow: isMatched ? T.glow(T.arcaneDim) : T.shadowMd,
+              borderRadius: radius,
+            }}>
+              <span style={{ fontSize: 36, lineHeight: 1 }}>
+                {card.symbol.emoji}
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── StarRating ──
+    function StarRating({ stars, size = 32, animate = false }) {
+      return (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          {[1, 2, 3].map(i => (
+            <span key={i} style={{
+              fontSize: size,
+              color: i <= stars ? T.gold : T.textGhost,
+              animation: animate && i <= stars ? `starPop 0.4s ease-out ${i * 0.15}s both` : 'none',
+              display: 'inline-block',
+            }}>★</span>
+          ))}
+        </div>
+      );
+    }
+
+    // ── Ornamental Divider ──
+    function Divider() {
+      return (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          margin: '16px 0',
+          justifyContent: 'center',
+        }}>
+          <div style={{ width: 40, height: 1, background: T.twilight }} />
+          <span style={{ color: T.arcaneDim, fontSize: 14, fontFamily: T.fontDisplay }}>✦</span>
+          <div style={{ width: 40, height: 1, background: T.twilight }} />
+        </div>
+      );
+    }
+
+    // ── ShapeMiniPreview ──
+    function ShapeMiniPreview({ pattern, color, dotSize = 4 }) {
+      const cols = pattern[0].length;
+      return (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${cols}, ${dotSize}px)`,
+          gridTemplateRows: `repeat(${pattern.length}, ${dotSize}px)`,
+          gap: 1, flexShrink: 0,
+        }}>
+          {pattern.map((row, r) =>
+            [...row].map((ch, c) => (
+              <div key={`${r}-${c}`} style={{
+                width: dotSize, height: dotSize, borderRadius: 1,
+                background: ch === '#' ? color : 'transparent',
+              }} />
+            ))
+          )}
+        </div>
+      );
+    }
+
+    // ── LevelSelect ──
+    function LevelSelect({ onSelect, onBack }) {
+      const [hovered, setHovered] = useState(null);
+      return (
+        <div style={{
+          minHeight: '100vh',
+          background: `radial-gradient(ellipse at 50% 30%, ${T.nightstone} 0%, ${T.abyss} 50%, ${T.void} 100%)`,
+          padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8 }}>
+            <button onClick={onBack} style={{
+              background: 'transparent', border: `1px solid ${T.twilight}`,
+              color: T.textMuted, borderRadius: T.r2, padding: '6px 14px',
+              cursor: 'pointer', fontFamily: T.fontDisplay, fontSize: 13,
+            }}>← Back</button>
+            <h2 style={{ fontFamily: T.fontDisplay, fontSize: 28, color: T.text }}>
+              Choose Your Quest
+            </h2>
+          </div>
+          <Divider />
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+            gap: 12, maxWidth: 560, width: '100%', marginTop: 16,
+          }}>
+            {LEVELS.map(level => (
+              <button key={level.id}
+                onClick={() => onSelect(level)}
+                onMouseEnter={() => setHovered(level.id)}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  background: T.nightstone,
+                  border: `1px solid ${hovered === level.id ? level.color : T.twilight}`,
+                  borderRadius: T.r3, padding: 14, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left',
+                  transition: 'all 0.15s ease',
+                  boxShadow: hovered === level.id ? T.glow(level.color + '44') : 'none',
+                }}>
+                <ShapeMiniPreview pattern={level.pattern} color={level.color} />
+                <div>
+                  <div style={{ fontFamily: T.fontDisplay, fontSize: 15, color: T.text }}>
+                    {level.name}
+                  </div>
+                  <div style={{ fontFamily: T.fontMono, fontSize: 11, color: T.textFaint, marginTop: 3 }}>
+                    {level.pairs} pairs · {level.timeLimit}s
+                  </div>
+                  <span style={{
+                    display: 'inline-block', marginTop: 5,
+                    fontFamily: T.fontMono, fontSize: 10,
+                    color: level.color, background: level.color + '22',
+                    padding: '2px 8px', borderRadius: T.rFull,
+                  }}>{level.difficulty}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+          <p style={{ fontFamily: T.fontMono, fontSize: 11, color: T.textGhost, marginTop: 32 }}>
+            The Arcane Vault · Sprint 2 · SynaptixLabs
+          </p>
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // SCREENS
+    // ═══════════════════════════════════════════════════════
+
+    // ── Main Menu ──
+    function MainMenu({ onEnter }) {
+      const fanEmojis = ['🐉', '⚔️', '💎', '👑', '🔥'];
+
+      return (
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: `radial-gradient(ellipse at 50% 30%, ${T.nightstone} 0%, ${T.abyss} 50%, ${T.void} 100%)`,
+          padding: 24,
+        }}>
+          <h1 style={{
+            fontFamily: T.fontDisplay, fontSize: 48, color: T.text,
+            textAlign: 'center', marginBottom: 4,
+            animation: 'titleGlow 3s ease-in-out infinite', lineHeight: 1.2,
+          }}>
+            The Arcane Vault
+          </h1>
+          <p style={{
+            fontFamily: T.fontBody, fontSize: 18, color: T.textMuted,
+            marginBottom: 8, fontStyle: 'italic',
+          }}>
+            A Memory of Creatures & Runes
+          </p>
+          <Divider />
+          <div style={{
+            display: 'flex', justifyContent: 'center', height: 100,
+            marginBottom: 32, position: 'relative',
+          }}>
+            {fanEmojis.map((emoji, i) => {
+              const angle = (i - 2) * 12;
+              const yOff = Math.abs(i - 2) * 4;
+              return (
+                <div key={i} style={{
+                  width: 56, height: 76,
+                  background: `linear-gradient(135deg, ${T.nightstone}, ${T.dusk})`,
+                  border: `1px solid ${T.twilight}`, borderRadius: 8,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 28, '--rotate': `rotate(${angle}deg)`,
+                  transform: `rotate(${angle}deg) translateY(${yOff}px)`,
+                  animation: `floatCard 3s ease-in-out ${i * 0.3}s infinite`,
+                  boxShadow: T.shadowMd, marginLeft: i > 0 ? -12 : 0,
+                  position: 'relative', zIndex: 5 - Math.abs(i - 2),
+                }}>
+                  {emoji}
+                </div>
+              );
+            })}
+          </div>
+          <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
+            <p style={{ fontFamily: T.fontDisplay, fontSize: 16, color: T.textMuted, marginBottom: 4 }}>
+              8 shaped levels await within
+            </p>
+            <ArcaneButton variant="primary" size="lg" glow onClick={onEnter} style={{ width: 240 }}>
+              Enter the Vault
+            </ArcaneButton>
+          </div>
+          <p style={{ fontFamily: T.fontMono, fontSize: 11, color: T.textGhost, marginTop: 48 }}>
+            The Arcane Vault · Sprint 2 · SynaptixLabs
+          </p>
+        </div>
+      );
+    }
+
+    // ── Game Board (Shaped Grid) ──
+    function GameBoard({ level, onComplete, onBack }) {
+      const [cards, setCards] = useState([]);
+      const [flipped, setFlipped] = useState([]);
+      const [matched, setMatched] = useState(new Set());
+      const [mismatched, setMismatched] = useState(new Set());
+      const [moves, setMoves] = useState(0);
+      const [elapsed, setElapsed] = useState(0);
+      const [dealing, setDealing] = useState(true);
+      const [gameOver, setGameOver] = useState(false);
+      const timerRef = useRef(null);
+      const startTimeRef = useRef(null);
+
+      const totalPairs = level.pairs;
+
+      useEffect(() => {
+        setCards(buildCards(level.slots));
+        setFlipped([]); setMatched(new Set()); setMismatched(new Set());
+        setMoves(0); setElapsed(0); setGameOver(false); setDealing(true);
+        const dealTimer = setTimeout(() => setDealing(false), 600);
+        startTimeRef.current = Date.now();
+        timerRef.current = setInterval(() => {
+          setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        }, 100);
+        return () => { clearTimeout(dealTimer); clearInterval(timerRef.current); };
+      }, [level]);
+
+      useEffect(() => {
+        if (elapsed >= level.timeLimit && !gameOver) {
+          setGameOver(true); clearInterval(timerRef.current);
+          const pairsFound = matched.size / 2;
+          const stars = pairsFound === totalPairs
+            ? calculateStars(moves, totalPairs, elapsed, level.timeLimit) : 0;
+          const xp = calculateXP(totalPairs, elapsed, level.timeLimit, stars);
+          onComplete({ moves, elapsed, stars, xp, pairs: pairsFound, totalPairs,
+            timedOut: true, levelName: level.name });
+        }
+      }, [elapsed, level.timeLimit, gameOver]);
+
+      useEffect(() => {
+        if (cards.length > 0 && matched.size === cards.length && !gameOver) {
+          setGameOver(true); clearInterval(timerRef.current);
+          const finalElapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+          const stars = calculateStars(moves, totalPairs, finalElapsed, level.timeLimit);
+          const xp = calculateXP(totalPairs, finalElapsed, level.timeLimit, stars);
+          setTimeout(() => {
+            onComplete({ moves, elapsed: finalElapsed, stars, xp, pairs: totalPairs,
+              totalPairs, timedOut: false, levelName: level.name });
+          }, 800);
+        }
+      }, [matched, cards.length, gameOver]);
+
+      const handleClick = useCallback((cardId) => {
+        if (dealing || gameOver) return;
+        if (flipped.length >= 2) return;
+        if (matched.has(cardId)) return;
+        if (flipped.includes(cardId)) return;
+        const newFlipped = [...flipped, cardId];
+        setFlipped(newFlipped);
+        if (newFlipped.length === 2) {
+          setMoves(m => m + 1);
+          const [first, second] = newFlipped;
+          const card1 = cards.find(c => c.id === first);
+          const card2 = cards.find(c => c.id === second);
+          if (card1.pairId === card2.pairId) {
+            setTimeout(() => {
+              setMatched(prev => { const next = new Set(prev); next.add(first); next.add(second); return next; });
+              setFlipped([]);
+            }, 300);
+          } else {
+            setTimeout(() => setMismatched(new Set([first, second])), 500);
+            setTimeout(() => { setMismatched(new Set()); setFlipped([]); }, 1200);
+          }
+        }
+      }, [flipped, matched, dealing, gameOver, cards]);
+
+      // Responsive cell size
+      const gap = level.grid.cols > 6 ? 3 : 4;
+      const maxW = Math.min(600, window.innerWidth - 48);
+      const maxH = window.innerHeight - 140;
+      const cellW = (maxW - (level.grid.cols - 1) * gap) / level.grid.cols;
+      const cellH = (maxH - (level.grid.rows - 1) * gap) / level.grid.rows;
+      const cellSize = Math.max(48, Math.min(100, Math.min(cellW, cellH)));
+
+      return (
+        <div style={{
+          minHeight: '100vh',
+          background: `radial-gradient(ellipse at 50% 20%, ${T.nightstone} 0%, ${T.abyss} 40%, ${T.void} 100%)`,
+          display: 'flex', flexDirection: 'column',
+        }}>
+          <HUD elapsed={elapsed} timeLimit={level.timeLimit}
+            pairs={Math.floor(matched.size / 2)} totalPairs={totalPairs}
+            moves={moves} onBack={onBack} levelName={level.name} />
+          <TimerBar elapsed={elapsed} timeLimit={level.timeLimit} />
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${level.grid.cols}, ${cellSize}px)`,
+              gridTemplateRows: `repeat(${level.grid.rows}, ${cellSize}px)`,
+              gap: gap,
+            }}>
+              {cards.map(card => (
+                <div key={card.id} style={{
+                  gridColumn: card.col + 1,
+                  gridRow: card.row + 1,
+                }}>
+                  <Card card={card} cellSize={cellSize}
+                    isFlipped={flipped.includes(card.id)}
+                    isMatched={matched.has(card.id)}
+                    isMismatched={mismatched.has(card.id)}
+                    onClick={() => handleClick(card.id)} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{
+            textAlign: 'center', padding: '8px 0 16px',
+            fontFamily: T.fontDisplay, fontSize: 13, color: T.textGhost,
+          }}>
+            {level.name} · {level.shape} · {level.grid.cols}×{level.grid.rows}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Results Modal ──
+    function ResultsModal({ result, onReplay, onMenu, onLevels }) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: `radial-gradient(ellipse at 50% 40%, ${T.nightstone} 0%, ${T.abyss} 50%, ${T.void} 100%)`,
+          padding: 24,
+        }}>
+          <div className="fade-in" style={{
+            background: T.obsidian,
+            border: `1px solid ${T.twilight}`,
+            borderRadius: T.r4,
+            padding: 32,
+            width: '100%',
+            maxWidth: 400,
+            textAlign: 'center',
+            boxShadow: T.shadowLg,
+            position: 'relative',
+          }}>
+            {/* Shape echo watermark */}
+            <div style={{
+              position: 'absolute',
+              top: 16,
+              right: 20,
+              fontSize: 60,
+              color: T.textGhost,
+              opacity: 0.08,
+              fontFamily: T.fontDisplay,
+            }}>✦</div>
+
+            {/* Title */}
+            <h2 style={{
+              fontFamily: T.fontDisplay,
+              fontSize: 28,
+              color: result.timedOut ? T.danger : T.text,
+              marginBottom: 16,
+            }}>
+              {result.timedOut ? 'Time Expired!' : 'Quest Complete!'}
+            </h2>
+
+            {/* Stars */}
+            {!result.timedOut && (
+              <div style={{ marginBottom: 20 }}>
+                <StarRating stars={result.stars} size={36} animate />
+              </div>
+            )}
+
+            {/* Stats row */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              gap: 32,
+              marginBottom: 20,
+              fontFamily: T.fontMono,
+              fontSize: 14,
+            }}>
+              <div>
+                <div style={{ color: T.textFaint, fontSize: 11, marginBottom: 2 }}>MOVES</div>
+                <div style={{ color: T.text, fontSize: 20 }}>{result.moves}</div>
+              </div>
+              <div>
+                <div style={{ color: T.textFaint, fontSize: 11, marginBottom: 2 }}>TIME</div>
+                <div style={{ color: T.text, fontSize: 20 }}>{result.elapsed}s</div>
+              </div>
+              <div>
+                <div style={{ color: T.textFaint, fontSize: 11, marginBottom: 2 }}>PAIRS</div>
+                <div style={{ color: T.text, fontSize: 20 }}>{result.pairs}/{result.totalPairs}</div>
+              </div>
+            </div>
+
+            {/* XP Breakdown */}
+            {!result.timedOut && (
+              <div style={{
+                background: T.abyss,
+                borderRadius: T.r3,
+                padding: 16,
+                marginBottom: 24,
+                border: `1px solid ${T.twilight}`,
+              }}>
+                <div style={{
+                  fontFamily: T.fontDisplay,
+                  fontSize: 13,
+                  color: T.textFaint,
+                  marginBottom: 12,
+                  letterSpacing: 1,
+                }}>
+                  XP BREAKDOWN
+                </div>
+                {[
+                  ['Pairs', `+${result.xp.baseXP}`],
+                  ['Time Bonus', `+${result.xp.timeBonus}`],
+                  ['Star Bonus', `+${result.xp.starBonus}`],
+                ].map(([label, val]) => (
+                  <div key={label} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontFamily: T.fontMono,
+                    fontSize: 13,
+                    color: T.textMuted,
+                    padding: '3px 0',
+                  }}>
+                    <span>{label}</span>
+                    <span style={{ color: T.gold }}>{val}</span>
+                  </div>
+                ))}
+                <div style={{
+                  borderTop: `1px solid ${T.twilight}`,
+                  marginTop: 8,
+                  paddingTop: 8,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontFamily: T.fontMono,
+                  fontSize: 15,
+                }}>
+                  <span style={{ color: T.text }}>Total</span>
+                  <span style={{ color: T.gold, fontFamily: T.fontDisplay, fontSize: 18 }}>
+                    ✨ {result.xp.total.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Level name */}
+            {result.levelName && (
+              <div style={{ fontFamily: T.fontMono, fontSize: 11, color: T.textFaint, marginBottom: 16 }}>
+                {result.levelName}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <ArcaneButton variant="ghost" size="sm" onClick={onMenu}>
+                Main Menu
+              </ArcaneButton>
+              <ArcaneButton variant="ghost" size="sm" onClick={onLevels}>
+                Level Select
+              </ArcaneButton>
+              <ArcaneButton variant="primary" glow onClick={onReplay}>
+                {result.timedOut ? 'Try Again' : 'Play Again'}
+              </ArcaneButton>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // ROOT APP
+    // ═══════════════════════════════════════════════════════
+    function ArcaneVault() {
+      const [phase, setPhase] = useState('menu'); // menu | levelSelect | playing | results
+      const [currentLevel, setCurrentLevel] = useState(null);
+      const [result, setResult] = useState(null);
+      const [gameKey, setGameKey] = useState(0);
+
+      const handleEnter = useCallback(() => setPhase('levelSelect'), []);
+      const handleSelectLevel = useCallback((level) => {
+        setCurrentLevel(level);
+        setPhase('playing');
+        setGameKey(k => k + 1);
+      }, []);
+      const handleComplete = useCallback((res) => { setResult(res); setPhase('results'); }, []);
+      const handleReplay = useCallback(() => { setPhase('playing'); setGameKey(k => k + 1); }, []);
+      const handleLevels = useCallback(() => setPhase('levelSelect'), []);
+      const handleMenu = useCallback(() => {
+        setPhase('menu'); setCurrentLevel(null); setResult(null);
+      }, []);
+
+      if (phase === 'menu') return <MainMenu onEnter={handleEnter} />;
+      if (phase === 'levelSelect') return <LevelSelect onSelect={handleSelectLevel} onBack={handleMenu} />;
+      if (phase === 'playing') return (
+        <GameBoard key={gameKey} level={currentLevel} onComplete={handleComplete} onBack={handleLevels} />
+      );
+      if (phase === 'results') return (
+        <ResultsModal result={result} onReplay={handleReplay} onMenu={handleMenu} onLevels={handleLevels} />
+      );
+      return null;
+    }
+
+    // ── Mount ──
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<ArcaneVault />);
+  </script>
+</body>
+</html>
