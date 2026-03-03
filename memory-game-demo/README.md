@@ -5,6 +5,18 @@
 
 ---
 
+## Prerequisites
+
+- **Python 3** — the only requirement. Download from [python.org](https://www.python.org/downloads/)
+  - Windows: check **"Add Python to PATH"** during install
+  - Mac: `brew install python3`
+  - Linux: `sudo apt install python3`
+- **A browser** — Chrome, Firefox, Edge, Safari
+
+No Node.js. No npm. No build step.
+
+---
+
 ## Quick Start
 
 ```powershell
@@ -20,11 +32,11 @@
 ```bash
 # Or manually (any OS):
 cd frontend/modules/game/src
-python -m http.server 8766
+python3 -m http.server 8766
 # Open http://localhost:8766
 ```
 
-No build step. No npm install. Just open and play.
+The script checks for Python, starts the server, and opens your browser automatically.
 
 ---
 
