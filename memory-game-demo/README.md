@@ -61,7 +61,7 @@ Pick from 8 shaped levels, each with increasing difficulty:
 | 7 | The Gate | `H` | 10 | 110s | Hard |
 | 8 | The Star | `star` | 16 | 90s | Legendary |
 
-Each level card shows a **mini-preview** of the shape, pair count, time limit, and difficulty badge.
+Each level card shows a **mini-preview** of the shape, pair count, time limit, difficulty badge, and your **best stars** (if you've completed it before).
 
 ### 3. Gameplay
 - **Click a card** to flip it and reveal the creature underneath
@@ -82,6 +82,13 @@ Each level card shows a **mini-preview** of the shape, pair count, time limit, a
 - **Play Again** = retry the same level for better stars
 - **Level Select** = pick a different level
 - **Main Menu** = back to the start
+- If you beat your previous record, a **"New Best!"** badge appears
+
+### 6. Progress Tracking
+- Your **best score** (stars, moves, time) is saved per level in your browser (localStorage)
+- Progress persists across sessions — close the browser and come back later
+- Gold stars appear on the level select cards for levels you've beaten
+- Use **"Reset Progress"** on the level select screen to clear all saved scores
 
 ---
 
@@ -99,11 +106,12 @@ Each level card shows a **mini-preview** of the shape, pair count, time limit, a
 ## Game Architecture
 
 ```
-index.html (single file, ~925 lines)
+index.html (single file, ~980 lines)
 |
 +-- Design Tokens (T)        Colors, fonts, spacing, shadows
 +-- Symbol Pool               16 D&D creatures
 +-- Level Templates            8 shaped grids (pattern strings)
++-- Persistence               localStorage save/load/clear
 |
 +-- Components
 |   +-- ArcaneButton          Themed button (primary/gold/ghost/danger)
@@ -133,6 +141,9 @@ index.html (single file, ~925 lines)
 | `buildCards(slots)` | Assigns creature symbols to slots, Fisher-Yates shuffle |
 | `calculateStars(moves, pairs, elapsed, timeLimit)` | 1-3 stars based on move ratio + time ratio |
 | `calculateXP(pairs, elapsed, timeLimit, stars)` | Base + time bonus + star bonus |
+| `loadScores()` | Read saved best scores from localStorage |
+| `saveScore(levelId, result)` | Save if new best (by stars, then moves) |
+| `clearScores()` | Remove all saved progress |
 
 ### The Shaped Grid System
 
@@ -194,7 +205,7 @@ memory-game-demo/
 ├── backend/                           # Not used (client-side only game)
 │
 ├── tests/
-│   ├── e2e/game.spec.ts              # Playwright E2E tests (8 tests)
+│   ├── e2e/game.spec.ts              # Playwright E2E tests (10 tests)
 │   └── screenshots/                   # Captured by E2E tests
 │
 ├── docs/
@@ -205,10 +216,14 @@ memory-game-demo/
 │   ├── knowledge/
 │   │   └── Shaped_Grid_System.md      # Level template spec
 │   └── sprints/
-│       └── sprint_01/                 # Complete sprint artifacts
-│           ├── sprint_01_index.md     # Goals, scope, exit criteria
-│           ├── todo/sprint_01_todo.md # 18 tasks, all complete
-│           └── reports/sprint_01_report.md
+│       ├── sprint_01/                 # Core game (18 tasks)
+│       │   ├── sprint_01_index.md
+│       │   ├── todo/sprint_01_todo.md
+│       │   └── reports/sprint_01_report.md
+│       └── sprint_02/                 # Persistence (4 tasks)
+│           ├── sprint_02_index.md
+│           ├── todo/sprint_02_todo.md
+│           └── reports/sprint_02_report.md
 │
 └── .claude/
     ├── settings.local.json            # Tool permissions
@@ -245,16 +260,23 @@ npx playwright test --ui
 | Fonts | Google Fonts CDN | MedievalSharp, Crimson Text, Fira Code |
 | Testing | Playwright | Browser E2E tests |
 | Server | Python http.server | Zero-install static serving |
+| Persistence | localStorage | Browser-native, no backend needed |
 
 ---
 
 ## How It Was Built (Vibe Coding)
 
 ```
-1. CTO planned    ->  PRD, architecture, shaped grid system design
-2. DEV built      ->  18 tasks in Sprint 01 (all complete)
-3. QA verified    ->  8 Playwright E2E tests + screenshots
-4. Decisions logged in docs/DECISIONS.md
+Sprint 01 — Core Game
+  1. CTO planned    ->  PRD, architecture, shaped grid system design
+  2. DEV built      ->  18 tasks (all complete)
+  3. QA verified    ->  8 Playwright E2E tests + screenshots
+  4. Decisions logged in docs/DECISIONS.md
+
+Sprint 02 — "Remember Your Best"
+  1. CTO scoped     ->  4 tasks for localStorage persistence
+  2. DEV built      ->  Save scores, show stars, "New Best!", reset progress
+  3. QA verified    ->  2 new E2E tests (10 total)
 ```
 
-All artifacts live in `docs/sprints/sprint_01/` — the sprint index, task list, and report.
+All artifacts live in `docs/sprints/` — each sprint has its index, task list, and report.
