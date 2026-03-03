@@ -24,8 +24,8 @@ if command -v xdg-open &> /dev/null; then
   xdg-open "http://localhost:${PORT}" &
 elif command -v open &> /dev/null; then
   open "http://localhost:${PORT}" &
-elif command -v start &> /dev/null; then
-  start "http://localhost:${PORT}" &
+elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+  cmd.exe /c start "http://localhost:${PORT}" &
 fi
 
 # Start server

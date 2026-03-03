@@ -7,11 +7,18 @@
 
 ## Quick Start
 
-```bash
-# From this directory:
-./start.sh
+```powershell
+# Windows (PowerShell):
+.\start.ps1
+```
 
-# Or manually:
+```bash
+# Mac / Linux:
+./start.sh
+```
+
+```bash
+# Or manually (any OS):
 cd frontend/modules/game/src
 python -m http.server 8766
 # Open http://localhost:8766
@@ -156,7 +163,8 @@ Full design system: `docs/ui/UI_KIT.md`
 
 ```
 memory-game-demo/
-├── start.sh                           # Run this to start the game
+├── start.ps1                          # Start game (Windows PowerShell)
+├── start.sh                           # Start game (Mac / Linux)
 ├── CLAUDE.md                          # Project context for Claude Code
 ├── AGENTS.md                          # 3 roles: CTO, DEV, QA
 ├── playwright.config.ts               # E2E test config (auto-starts server)
