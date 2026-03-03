@@ -128,6 +128,37 @@ test.describe("Gameplay", () => {
   });
 });
 
+test.describe("Persistence (Sprint 2)", () => {
+  test("level select shows no stars on fresh load", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(() => localStorage.removeItem("arcane-vault-scores"));
+    await page.reload();
+    await page.locator("text=Enter the Vault").click();
+
+    // Reset Progress button should NOT appear when no scores
+    await expect(page.locator("text=Reset Progress")).not.toBeVisible();
+  });
+
+  test("saved scores show stars on level select", async ({ page }) => {
+    await page.goto("/");
+    // Inject a saved score
+    await page.evaluate(() => {
+      localStorage.setItem(
+        "arcane-vault-scores",
+        JSON.stringify({ "level-01": { stars: 3, moves: 6, elapsed: 20 } })
+      );
+    });
+    await page.reload();
+    await page.locator("text=Enter the Vault").click();
+
+    // Reset Progress button should appear
+    await expect(page.locator("text=Reset Progress")).toBeVisible();
+
+    // Clean up
+    await page.evaluate(() => localStorage.removeItem("arcane-vault-scores"));
+  });
+});
+
 test.describe("No Console Errors", () => {
   test("no JS errors on game load", async ({ page }) => {
     const errors: string[] = [];

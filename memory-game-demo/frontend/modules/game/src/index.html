@@ -274,6 +274,37 @@
     }
 
     // ═══════════════════════════════════════════════════════
+    // PERSISTENCE (localStorage)
+    // ═══════════════════════════════════════════════════════
+    const STORAGE_KEY = 'arcane-vault-scores';
+
+    function loadScores() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch { return {}; }
+    }
+
+    function saveScore(levelId, result) {
+      try {
+        const scores = loadScores();
+        const prev = scores[levelId];
+        const isNewBest = !prev
+          || result.stars > prev.stars
+          || (result.stars === prev.stars && result.moves < prev.moves);
+        if (isNewBest) {
+          scores[levelId] = { stars: result.stars, moves: result.moves, elapsed: result.elapsed };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
+        }
+        return isNewBest;
+      } catch { return false; }
+    }
+
+    function clearScores() {
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    }
+
+    // ═══════════════════════════════════════════════════════
     // COMPONENTS
     // ═══════════════════════════════════════════════════════
 
@@ -479,8 +510,9 @@
     }
 
     // ── LevelSelect ──
-    function LevelSelect({ onSelect, onBack }) {
+    function LevelSelect({ onSelect, onBack, scores }) {
       const [hovered, setHovered] = useState(null);
+      const [confirmReset, setConfirmReset] = useState(false);
       return (
         <div style={{
           minHeight: '100vh',
@@ -502,37 +534,68 @@
             display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
             gap: 12, maxWidth: 560, width: '100%', marginTop: 16,
           }}>
-            {LEVELS.map(level => (
-              <button key={level.id}
-                onClick={() => onSelect(level)}
-                onMouseEnter={() => setHovered(level.id)}
-                onMouseLeave={() => setHovered(null)}
-                style={{
-                  background: T.nightstone,
-                  border: `1px solid ${hovered === level.id ? level.color : T.twilight}`,
-                  borderRadius: T.r3, padding: 14, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left',
-                  transition: 'all 0.15s ease',
-                  boxShadow: hovered === level.id ? T.glow(level.color + '44') : 'none',
-                }}>
-                <ShapeMiniPreview pattern={level.pattern} color={level.color} />
-                <div>
-                  <div style={{ fontFamily: T.fontDisplay, fontSize: 15, color: T.text }}>
-                    {level.name}
+            {LEVELS.map(level => {
+              const best = scores[level.id];
+              return (
+                <button key={level.id}
+                  onClick={() => onSelect(level)}
+                  onMouseEnter={() => setHovered(level.id)}
+                  onMouseLeave={() => setHovered(null)}
+                  style={{
+                    background: T.nightstone,
+                    border: `1px solid ${hovered === level.id ? level.color : T.twilight}`,
+                    borderRadius: T.r3, padding: 14, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left',
+                    transition: 'all 0.15s ease',
+                    boxShadow: hovered === level.id ? T.glow(level.color + '44') : 'none',
+                  }}>
+                  <ShapeMiniPreview pattern={level.pattern} color={level.color} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: T.fontDisplay, fontSize: 15, color: T.text }}>
+                      {level.name}
+                    </div>
+                    <div style={{ fontFamily: T.fontMono, fontSize: 11, color: T.textFaint, marginTop: 3 }}>
+                      {level.pairs} pairs · {level.timeLimit}s
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+                      <span style={{
+                        display: 'inline-block',
+                        fontFamily: T.fontMono, fontSize: 10,
+                        color: level.color, background: level.color + '22',
+                        padding: '2px 8px', borderRadius: T.rFull,
+                      }}>{level.difficulty}</span>
+                      {best && (
+                        <span style={{ fontSize: 12, letterSpacing: 2 }}>
+                          {[1, 2, 3].map(i => (
+                            <span key={i} style={{ color: i <= best.stars ? T.gold : T.textGhost }}>★</span>
+                          ))}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ fontFamily: T.fontMono, fontSize: 11, color: T.textFaint, marginTop: 3 }}>
-                    {level.pairs} pairs · {level.timeLimit}s
-                  </div>
-                  <span style={{
-                    display: 'inline-block', marginTop: 5,
-                    fontFamily: T.fontMono, fontSize: 10,
-                    color: level.color, background: level.color + '22',
-                    padding: '2px 8px', borderRadius: T.rFull,
-                  }}>{level.difficulty}</span>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
+          {Object.keys(scores).length > 0 && (
+            <div style={{ marginTop: 24 }}>
+              {confirmReset ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontFamily: T.fontMono, fontSize: 12, color: T.danger }}>Clear all progress?</span>
+                  <ArcaneButton variant="danger" size="sm" onClick={() => { clearScores(); setConfirmReset(false); window.location.reload(); }}>
+                    Yes, Reset
+                  </ArcaneButton>
+                  <ArcaneButton variant="ghost" size="sm" onClick={() => setConfirmReset(false)}>
+                    Cancel
+                  </ArcaneButton>
+                </div>
+              ) : (
+                <ArcaneButton variant="ghost" size="sm" onClick={() => setConfirmReset(true)}>
+                  Reset Progress
+                </ArcaneButton>
+              )}
+            </div>
+          )}
           <p style={{ fontFamily: T.fontMono, fontSize: 11, color: T.textGhost, marginTop: 32 }}>
             The Arcane Vault · Sprint 2 · SynaptixLabs
           </p>
@@ -737,7 +800,7 @@
     }
 
     // ── Results Modal ──
-    function ResultsModal({ result, onReplay, onMenu, onLevels }) {
+    function ResultsModal({ result, isNewBest, onReplay, onMenu, onLevels }) {
       return (
         <div style={{
           minHeight: '100vh',
@@ -783,6 +846,17 @@
             {!result.timedOut && (
               <div style={{ marginBottom: 20 }}>
                 <StarRating stars={result.stars} size={36} animate />
+                {isNewBest && (
+                  <div className="fade-in" style={{
+                    marginTop: 8,
+                    fontFamily: T.fontDisplay,
+                    fontSize: 16,
+                    color: T.gold,
+                    letterSpacing: 1,
+                  }}>
+                    ✨ New Best! ✨
+                  </div>
+                )}
               </div>
             )}
 
@@ -892,6 +966,8 @@
       const [phase, setPhase] = useState('menu'); // menu | levelSelect | playing | results
       const [currentLevel, setCurrentLevel] = useState(null);
       const [result, setResult] = useState(null);
+      const [isNewBest, setIsNewBest] = useState(false);
+      const [scores, setScores] = useState(loadScores);
       const [gameKey, setGameKey] = useState(0);
 
       const handleEnter = useCallback(() => setPhase('levelSelect'), []);
@@ -900,20 +976,26 @@
         setPhase('playing');
         setGameKey(k => k + 1);
       }, []);
-      const handleComplete = useCallback((res) => { setResult(res); setPhase('results'); }, []);
+      const handleComplete = useCallback((res) => {
+        const newBest = !res.timedOut && saveScore(currentLevel.id, res);
+        setIsNewBest(newBest);
+        if (newBest) setScores(loadScores());
+        setResult(res);
+        setPhase('results');
+      }, [currentLevel]);
       const handleReplay = useCallback(() => { setPhase('playing'); setGameKey(k => k + 1); }, []);
-      const handleLevels = useCallback(() => setPhase('levelSelect'), []);
+      const handleLevels = useCallback(() => { setScores(loadScores()); setPhase('levelSelect'); }, []);
       const handleMenu = useCallback(() => {
         setPhase('menu'); setCurrentLevel(null); setResult(null);
       }, []);
 
       if (phase === 'menu') return <MainMenu onEnter={handleEnter} />;
-      if (phase === 'levelSelect') return <LevelSelect onSelect={handleSelectLevel} onBack={handleMenu} />;
+      if (phase === 'levelSelect') return <LevelSelect onSelect={handleSelectLevel} onBack={handleMenu} scores={scores} />;
       if (phase === 'playing') return (
         <GameBoard key={gameKey} level={currentLevel} onComplete={handleComplete} onBack={handleLevels} />
       );
       if (phase === 'results') return (
-        <ResultsModal result={result} onReplay={handleReplay} onMenu={handleMenu} onLevels={handleLevels} />
+        <ResultsModal result={result} isNewBest={isNewBest} onReplay={handleReplay} onMenu={handleMenu} onLevels={handleLevels} />
       );
       return null;
     }

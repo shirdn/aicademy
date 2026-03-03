@@ -14,7 +14,7 @@
 |---|---|
 | **Name** | The Arcane Vault — Memory Match |
 | **Purpose** | Memory card game with shaped grid levels and D&D theme |
-| **Current sprint** | Sprint 01 (Complete) |
+| **Current sprint** | Sprint 02 (Complete) |
 | **Dev port** | 8766 |
 
 ---
