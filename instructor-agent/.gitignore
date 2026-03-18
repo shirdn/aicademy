@@ -1,0 +1,6 @@
+# Course PDFs (too large for git — upload directly to your AI platform)
+course-materials/*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db
